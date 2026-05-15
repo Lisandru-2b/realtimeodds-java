@@ -18,7 +18,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.Lisandru-2b:realtimeodds-java:0.1.0")
+    implementation("com.github.Lisandru-2b:realtimeodds-java:v0.1.1")
 }
 ```
 
@@ -30,7 +30,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.Lisandru-2b:realtimeodds-java:0.1.0'
+    implementation 'com.github.Lisandru-2b:realtimeodds-java:v0.1.1'
 }
 ```
 
@@ -47,7 +47,7 @@ dependencies {
 <dependency>
     <groupId>com.github.Lisandru-2b</groupId>
     <artifactId>realtimeodds-java</artifactId>
-    <version>0.1.0</version>
+    <version>v0.1.1</version>
 </dependency>
 ```
 
