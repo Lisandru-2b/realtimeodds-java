@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.github.Lisandru-2b"
-version = "0.1.0"
+version = "0.1.1"
 
 java {
     toolchain {
