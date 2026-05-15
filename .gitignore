@@ -1,0 +1,25 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# IntelliJ / Eclipse
+.idea/
+.classpath
+.project
+.settings/
+*.iml
+*.ipr
+*.iws
+bin/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local env
+.env
+.env.local
