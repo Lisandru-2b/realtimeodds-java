@@ -4,8 +4,6 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -13,7 +11,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import xyz.realtimeodds.entities.Bookmaker;
 import xyz.realtimeodds.entities.Market;
-import xyz.realtimeodds.entities.Quote;
 import xyz.realtimeodds.entities.Selection;
 import xyz.realtimeodds.entities.SportEvent;
 import xyz.realtimeodds.events.ConnectedEvent;
@@ -26,6 +23,7 @@ import xyz.realtimeodds.events.SourceClearedEvent;
 import xyz.realtimeodds.events.SportEventAddedEvent;
 import xyz.realtimeodds.events.SportEventRemovedEvent;
 import xyz.realtimeodds.events.SportEventUpdatedEvent;
+import xyz.realtimeodds.internal.OddsBookImpl;
 import xyz.realtimeodds.internal.OddsStore;
 import xyz.realtimeodds.internal.TypedEmitter;
 import xyz.realtimeodds.internal.gateway.GatewayClient;
@@ -50,6 +48,7 @@ public final class Client {
     private final AtomicReference<ConnectionState> state =
             new AtomicReference<>(ConnectionState.disconnected());
     private final Set<Integer> wiredStores = new HashSet<>();
+    private final OddsBookImpl liveBook = new OddsBookImpl();
     private GatewayClient gw;
     private CompletableFuture<Void> pending;
 
@@ -98,7 +97,8 @@ public final class Client {
 
     /**
      * Close and stop reconnecting. Idempotent. If a {@link #connect()} is in
-     * flight, it completes exceptionally.
+     * flight, it completes exceptionally. The live {@link OddsBook} is emptied
+     * immediately.
      */
     public synchronized CompletableFuture<Void> disconnect() {
         CompletableFuture<Void> p = pending;
@@ -111,31 +111,41 @@ public final class Client {
             gw.disconnect();
             gw = null;
         }
+        liveBook.clear();
         state.set(ConnectionState.disconnected());
         return CompletableFuture.completedFuture(null);
     }
 
-    public Snapshot snapshot() {
-        Map<String, SportEvent> all = new LinkedHashMap<>();
-        if (gw != null) {
-            for (OddsStore store : gw.getStores().values()) {
-                all.putAll(store.getAllSportEvents());
-            }
-        }
-        return new Snapshot(all, state.get().status() != ConnectionStatus.CONNECTED);
+    /**
+     * Live {@link OddsBook} — same instance every read, mutated in place as
+     * wire messages arrive. Reads inside event handlers see the freshest
+     * state. Beware: {@link OddsBook#size()} and lookup results change between
+     * two reads if events are flowing.
+     *
+     * <p>On disconnect the live book is emptied immediately; on reconnect it
+     * repopulates from the server snapshot.
+     */
+    public OddsBook odds() {
+        return liveBook;
     }
 
+    /**
+     * Frozen clone of the live book taken at the moment of the call.
+     * Subsequent live mutations do not affect the returned snapshot.
+     *
+     * <p>Use this when you need a stable view across multiple reads (audits,
+     * exports, multi-step computations).
+     */
+    public OddsBook snapshot() {
+        return liveBook.cloneBook();
+    }
+
+    /**
+     * O(1) single lookup. Returns {@code null} for unknown ids.
+     * Convenience shortcut for {@code client.odds().getSportEvent(id)}.
+     */
     public SportEvent getSportEvent(String sportEventId) {
-        if (gw == null) {
-            return null;
-        }
-        for (OddsStore store : gw.getStores().values()) {
-            SportEvent ev = store.getSportEvent(sportEventId);
-            if (ev != null) {
-                return ev;
-            }
-        }
-        return null;
+        return liveBook.getSportEvent(sportEventId);
     }
 
     // ─── Event subscription ─────────────────────────────────────────────────
@@ -224,6 +234,10 @@ public final class Client {
     }
 
     private synchronized void onGwDisconnected(GatewayClient.DisconnectedPayload p) {
+        // Empty the live book immediately: the connection is gone, the mirror
+        // is invalid. The `disconnected` event is the sole signal — no
+        // per-event sportEvent:removed or source:cleared is emitted.
+        liveBook.clear();
         emitter.emit("disconnected",
                 new DisconnectedEvent(p.willReconnect(), p.code(), p.reason() == null ? "" : p.reason()));
         if (Protocol.isAuthCloseCode(p.code())) {
@@ -290,25 +304,37 @@ public final class Client {
         } catch (IllegalArgumentException e) {
             return;
         }
-        emitter.emit("source:cleared", new SourceClearedEvent(bookmaker, nowMs()));
+        int removed = liveBook.clearBookmaker(bookmaker);
+        if (removed > 0) {
+            emitter.emit("source:cleared", new SourceClearedEvent(bookmaker, nowMs()));
+        }
     }
 
     private void wireStore(OddsStore store, Bookmaker bookmaker) {
         store.events().<OddsStore.UpsertedPayload>on("sportEvent:upserted", payload -> {
             long now = nowMs();
-            if (payload.isNew()) {
-                emitter.emit("sportEvent:added", new SportEventAddedEvent(payload.sportEvent(), now));
+            SportEvent ev = payload.sportEvent();
+            // `added` vs `updated` is decided against the live book, not the
+            // gateway store's `isNew` flag. After a disconnect the live book
+            // is cleared but the gateway store may still hold prior entities.
+            boolean wasPresent = liveBook.getSportEvent(ev.id()) != null;
+            liveBook.upsert(ev);
+            if (wasPresent) {
+                emitter.emit("sportEvent:updated", new SportEventUpdatedEvent(ev, now));
             } else {
-                emitter.emit("sportEvent:updated", new SportEventUpdatedEvent(payload.sportEvent(), now));
+                emitter.emit("sportEvent:added", new SportEventAddedEvent(ev, now));
             }
         });
-        store.events().<OddsStore.RemovedPayload>on("sportEvent:removed", payload ->
-                emitter.emit("sportEvent:removed",
-                        new SportEventRemovedEvent(bookmaker, payload.sportEventId(), nowMs())));
+        store.events().<OddsStore.RemovedPayload>on("sportEvent:removed", payload -> {
+            liveBook.remove(payload.sportEventId());
+            emitter.emit("sportEvent:removed",
+                    new SportEventRemovedEvent(bookmaker, payload.sportEventId(), nowMs()));
+        });
         store.events().<OddsStore.PricesUpdatedPayload>on("prices:updated", payload -> {
             long now = nowMs();
             SportEvent updated = store.getSportEvent(payload.sportEventId());
             if (updated != null) {
+                liveBook.upsert(updated);
                 emitter.emit("sportEvent:updated", new SportEventUpdatedEvent(updated, now));
             }
             for (String selectionId : payload.prices().keySet()) {
@@ -330,9 +356,14 @@ public final class Client {
                                 now));
             }
         });
-        store.events().<OddsStore.ResyncedPayload>on("store:resynced", payload ->
-                emitter.emit("resync",
-                        new ResyncEvent(bookmaker, payload.reason(), payload.sportEvents(), nowMs())));
+        store.events().<OddsStore.ResyncedPayload>on("store:resynced", payload -> {
+            // Atomic per-bookmaker swap: swap the live book's slice for this
+            // bookmaker BEFORE firing the public event so consumers see the
+            // new state when their handler runs.
+            liveBook.replaceBookmaker(bookmaker, payload.sportEvents());
+            emitter.emit("resync",
+                    new ResyncEvent(bookmaker, payload.reason(), payload.sportEvents(), nowMs()));
+        });
     }
 
     private synchronized void failPending(RuntimeException err) {
