@@ -58,14 +58,21 @@ public sealed interface SportEvent permits BasketballMatch, FootballMatch, Tenni
 
     // ─── Lookups ────────────────────────────────────────────────────────────
 
-    /** Lookup by MarketId or SelectionId (truncated to MarketId). Returns {@code null} if unknown. */
+    /**
+     * Lookup by MarketId or SelectionId. Returns {@code null} if unknown.
+     *
+     * <p>Tries a direct lookup first (input is a MarketId), then falls back
+     * to stripping the trailing selection segment. Robust to MarketIds whose
+     * {@code external_market_id} part contains internal {@code :} separators.
+     */
     default Market getMarket(String entityId) {
-        try {
-            String marketId = IdHelper.getMarketId(entityId);
-            return markets().get(marketId);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
+        // Direct: the caller passed a MarketId.
+        Market direct = markets().get(entityId);
+        if (direct != null) return direct;
+        // Fall back: the caller passed a SelectionId — drop the last segment.
+        int lastColon = entityId.lastIndexOf(':');
+        if (lastColon == -1) return null;
+        return markets().get(entityId.substring(0, lastColon));
     }
 
     default Selection getSelection(String selectionId) {

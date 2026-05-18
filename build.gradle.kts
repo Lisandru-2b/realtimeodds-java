@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.github.Lisandru-2b"
-version = "0.2.0"
+version = "0.3.0"
 
 java {
     toolchain {
@@ -41,6 +41,26 @@ tasks.test {
     useJUnitPlatform()
     testLogging {
         events("passed", "failed", "skipped")
+    }
+}
+
+// Convenience task to dump a snapshot to JSON without adding the `application`
+// plugin to the publication graph. Wired up by .claude/skills/snapshot-dump.
+//
+// Pass CLI args via -Pargs and JVM args via -PjvmArgs:
+//   ./gradlew runDump \
+//       -Pargs="--api-key rto_... --output snap.json --wait 2" \
+//       -PjvmArgs="-Djavax.net.ssl.trustStoreType=Windows-ROOT"
+tasks.register<JavaExec>("runDump") {
+    group = "application"
+    description = "Connect to the gateway and dump a snapshot to JSON (see src/main/java/snapshot/Dump.java)"
+    mainClass.set("snapshot.Dump")
+    classpath = sourceSets["main"].runtimeClasspath
+    if (project.hasProperty("args")) {
+        args(project.property("args").toString().trim().split("\\s+".toRegex()))
+    }
+    if (project.hasProperty("jvmArgs")) {
+        jvmArgs(project.property("jvmArgs").toString().trim().split("\\s+".toRegex()))
     }
 }
 

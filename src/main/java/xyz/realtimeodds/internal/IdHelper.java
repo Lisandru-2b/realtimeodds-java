@@ -30,12 +30,26 @@ public final class IdHelper {
         return String.join(":", parts[0], parts[1], parts[2]);
     }
 
+    /**
+     * Resolve any MarketId or SelectionId to the MarketId.
+     *
+     * <p>The grammar reserves {@code :} as the top-level segment separator.
+     * Producers SHOULD avoid {@code :} inside {@code external_market_id} /
+     * {@code external_selection_id} (use {@code _} instead). This helper
+     * tolerates inputs where a producer embedded {@code :} internally: with
+     * 5+ segments we assume the input is a SelectionId and strip its
+     * trailing segment; with fewer it is returned verbatim.
+     */
     public static String getMarketId(String entityId) {
         String[] parts = entityId.split(":");
         if (parts.length < 4) {
             throw new IllegalArgumentException("Cannot extract MarketId from " + entityId);
         }
-        return String.join(":", parts[0], parts[1], parts[2], parts[3]);
+        if (parts.length < 5) {
+            return entityId;
+        }
+        int lastColon = entityId.lastIndexOf(':');
+        return entityId.substring(0, lastColon);
     }
 
     public static String makeSportEventId(Bookmaker bookmaker, String externalId) {
