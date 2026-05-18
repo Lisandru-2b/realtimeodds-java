@@ -1,17 +1,19 @@
+import com.vanniktech.maven.publish.JavaLibrary
+import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.SonatypeHost
+
 plugins {
     `java-library`
-    `maven-publish`
+    id("com.vanniktech.maven.publish") version "0.30.0"
 }
 
-group = "com.github.Lisandru-2b"
+group = "xyz.realtimeodds"
 version = "0.3.0"
 
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(17))
     }
-    withSourcesJar()
-    withJavadocJar()
 }
 
 repositories {
@@ -64,21 +66,55 @@ tasks.register<JavaExec>("runDump") {
     }
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
-            pom {
-                name.set("realtimeodds")
-                description.set("Real-time betting odds SDK — multi-bookmaker, sport-discriminated, async with CompletableFuture.")
-                url.set("https://github.com/Lisandru-2b/realtimeodds-java")
-                licenses {
-                    license {
-                        name.set("MIT")
-                        url.set("https://opensource.org/licenses/MIT")
-                    }
-                }
+// ─── Maven Central publishing ───────────────────────────────────────────────
+//
+// Coordinate: xyz.realtimeodds:realtimeodds-java:<version>
+//
+// Driven by the vanniktech plugin (handles sources jar, javadoc jar, signing,
+// POM completeness, and upload to the Sonatype Central Portal in one go).
+//
+// Required environment variables at publish time:
+//   ORG_GRADLE_PROJECT_mavenCentralUsername       (Sonatype User Token)
+//   ORG_GRADLE_PROJECT_mavenCentralPassword       (Sonatype User Token secret)
+//   ORG_GRADLE_PROJECT_signingInMemoryKey         (ASCII-armored GPG private key)
+//   ORG_GRADLE_PROJECT_signingInMemoryKeyId       (last 8 hex of GPG fingerprint)
+//   ORG_GRADLE_PROJECT_signingInMemoryKeyPassword (GPG passphrase)
+mavenPublishing {
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL, automaticRelease = true)
+    signAllPublications()
+
+    configure(JavaLibrary(javadocJar = JavadocJar.Javadoc(), sourcesJar = true))
+
+    coordinates("xyz.realtimeodds", "realtimeodds-java", project.version.toString())
+
+    pom {
+        name.set("realtimeodds-java")
+        description.set("Real-time betting odds SDK — multi-bookmaker, sport-discriminated, async with CompletableFuture.")
+        inceptionYear.set("2026")
+        url.set("https://github.com/Lisandru-2b/realtimeodds-java")
+        licenses {
+            license {
+                name.set("MIT License")
+                url.set("https://opensource.org/licenses/MIT")
+                distribution.set("repo")
             }
+        }
+        developers {
+            developer {
+                id.set("Lisandru-2b")
+                name.set("Lisandru")
+                email.set("barrallisandru@gmail.com")
+                url.set("https://github.com/Lisandru-2b")
+            }
+        }
+        scm {
+            url.set("https://github.com/Lisandru-2b/realtimeodds-java")
+            connection.set("scm:git:git://github.com/Lisandru-2b/realtimeodds-java.git")
+            developerConnection.set("scm:git:ssh://git@github.com/Lisandru-2b/realtimeodds-java.git")
+        }
+        issueManagement {
+            system.set("GitHub Issues")
+            url.set("https://github.com/Lisandru-2b/realtimeodds-java/issues")
         }
     }
 }
