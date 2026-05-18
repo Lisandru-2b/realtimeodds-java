@@ -4,7 +4,7 @@ Real-time betting odds SDK for Java — multi-bookmaker, sport-discriminated, as
 
 The SDK is a **strict replica** of the gateway's internal stores: same shapes, same fields, same getters and read-side methods. Discriminated unions implemented as Java 17 `sealed interface` + `record`, so consumer code can `switch` exhaustively with full type narrowing.
 
-> Status: 0.1.0 — early. Stable through the `0.x` line.
+> Status: 0.3.0 — alpha. Stable through the `0.x` line.
 
 ## Install
 
@@ -18,7 +18,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.Lisandru-2b:realtimeodds-java:v0.1.1")
+    implementation("com.github.Lisandru-2b:realtimeodds-java:v0.3.0")
 }
 ```
 
@@ -30,7 +30,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.Lisandru-2b:realtimeodds-java:v0.1.1'
+    implementation 'com.github.Lisandru-2b:realtimeodds-java:v0.3.0'
 }
 ```
 
@@ -47,7 +47,7 @@ dependencies {
 <dependency>
     <groupId>com.github.Lisandru-2b</groupId>
     <artifactId>realtimeodds-java</artifactId>
-    <version>v0.1.1</version>
+    <version>v0.3.0</version>
 </dependency>
 ```
 
@@ -57,6 +57,7 @@ Requires Java 17+.
 
 ```java
 import xyz.realtimeodds.RealtimeOddsClient;
+import xyz.realtimeodds.entities.BasketballMatch;
 
 public class Quickstart {
     public static void main(String[] args) throws Exception {
@@ -65,15 +66,15 @@ public class Quickstart {
             .apiKey(System.getenv("REALTIMEODDS_API_KEY"))
             .build();
 
-        client.onConnected(ev -> System.out.println("connected"));
-        client.onSportEventAdded(ev -> {
-            var se = ev.sportEvent();
-            if (se.sport() == xyz.realtimeodds.entities.Sport.BASKETBALL) {
-                System.out.println(se.name() + " (" + se.bookmaker() + ")");
-            }
+        client.onOddsChanged(ev -> {
+            var ctx = client.odds().findContext(ev.selectionId());
+            if (ctx == null || !(ctx.sportEvent() instanceof BasketballMatch match)) return;
+
+            System.out.printf("[%s] %s · %s · %s → %.2f%n",
+                ev.bookmaker(), match.name(),
+                ctx.market().kind(), ctx.selection().result(), ev.quote().price()
+            );
         });
-        client.onOddsChanged(ev ->
-            System.out.println(ev.bookmaker() + " " + ev.selectionId() + " -> " + ev.quote().price()));
 
         client.connect().join();
         Thread.sleep(60_000);
@@ -88,11 +89,27 @@ public class Quickstart {
 |---|---|
 | `RealtimeOddsClient.builder().url(...).apiKey(...).build()` | Construct a client. |
 | `client.connect()` | Open the WebSocket. Returns `CompletableFuture<Void>` resolving on first successful connection; completes exceptionally on fatal errors. Concurrent calls share the same future. |
-| `client.disconnect()` | Close and stop reconnecting. Idempotent. Fails any in-flight `connect()`. |
-| `client.snapshot()` | Returns `Snapshot(sportEvents: Map<String, SportEvent>, stale: boolean)`. |
-| `client.getSportEvent(id)` | Single lookup by id. Returns `null` if unknown. |
-| `client.onXxx(cb)` / `client.off(event, cb)` | Subscribe / unsubscribe. Sync callbacks. |
+| `client.disconnect()` | Close and stop reconnecting. Idempotent. Fails any in-flight `connect()`. The live `OddsBook` is emptied immediately. |
+| `client.odds()` | Live `OddsBook` — same instance every read, mutated in place as wire messages arrive. |
+| `client.snapshot()` | Frozen clone of the live book taken at the moment of the call. Use when you need a stable view across multiple reads. |
+| `client.getSportEvent(id)` | O(1) single lookup. Returns `null` if unknown. Convenience shortcut for `client.odds().getSportEvent(id)`. |
+| `client.onXxx(cb)` / `client.off(event, cb)` | Subscribe / unsubscribe. Synchronous callbacks (`Consumer<T>`). |
 | `client.connectionState()` | `ConnectionState(status, lastError)`. |
+
+### `OddsBook`
+
+Read-only view of every sport event the SDK knows about, across every bookmaker. All lookups are O(1) thanks to maintained inverse indexes. Implements `Iterable<SportEvent>` for direct iteration.
+
+```java
+client.odds().size();                              // int
+client.odds().getSportEvent(sportEventId);         // SportEvent | null
+client.odds().getMarket(marketId);                 // Market | null
+client.odds().getSelection(selectionId);           // Selection | null
+client.odds().findContext(selectionId);            // OddsContext | null
+for (var ev : client.odds()) { ... }               // iterate every event
+```
+
+`findContext` returns an `OddsContext(SportEvent sportEvent, Market market, Selection selection)` record in one O(1) lookup — recommended inside an `onOddsChanged` handler when you need more than just the price.
 
 ### Events
 
@@ -101,15 +118,15 @@ Synchronous callbacks (`Consumer<T>`). Each event payload is a `record`.
 | Event | Payload |
 |---|---|
 | `connected` | `ConnectedEvent` (singleton) |
-| `disconnected` | `DisconnectedEvent(willReconnect, code, reason)` |
+| `disconnected` | `DisconnectedEvent(willReconnect, code, reason)` — the live `OddsBook` is emptied before this fires. |
 | `reconnecting` | `ReconnectingEvent(attempt, delayMs)` |
 | `error` | `ErrorEvent(message, fatal)` |
 | `sportEvent:added` | `SportEventAddedEvent(sportEvent, receivedAt)` |
 | `sportEvent:updated` | `SportEventUpdatedEvent(sportEvent, receivedAt)` — fires on metadata change OR on any odds change |
 | `sportEvent:removed` | `SportEventRemovedEvent(bookmaker, sportEventId, receivedAt)` |
 | `odds:changed` | `OddsChangedEvent(bookmaker, sportEventId, marketId, selectionId, quote, receivedAt)` |
-| `source:cleared` | `SourceClearedEvent(bookmaker, receivedAt)` — a bookmaker source went away |
-| `resync` | `ResyncEvent(bookmaker, reason, sportEvents, receivedAt)` — full atomic state replacement |
+| `source:cleared` | `SourceClearedEvent(bookmaker, receivedAt)` — a bookmaker source went away. The SDK has already purged its events from the live book. |
+| `resync` | `ResyncEvent(bookmaker, reason, sportEvents, receivedAt)` — atomic full-state replacement for one bookmaker. The live book has already swapped the affected slice. |
 
 Close codes 4001/4002/4003 are fatal auth codes; `fatal=true` errors stop the client.
 
@@ -148,7 +165,7 @@ client.onSportEventAdded(ev -> {
 Every `SportEvent` exposes a `bookmaker()` property (derived from its `id`). The same underlying match reported by two bookmakers is two distinct entries with different `id` and `bookmaker`. Filter:
 
 ```java
-var ps3838 = client.snapshot().sportEvents().values().stream()
+var ps3838 = client.odds().sportEvents().stream()
     .filter(ev -> ev.bookmaker() == Bookmaker.PS3838)
     .toList();
 ```
@@ -179,7 +196,7 @@ client.onError(ev -> {
 
 ## Stability
 
-This is `0.1.0`. The shapes documented above are intended to remain stable through the `0.x` line.
+This is `0.3.0`. The shapes documented above are intended to remain stable through the `0.x` line.
 
 See [`realtimeodds-spec`](https://github.com/Lisandru-2b/realtimeodds-spec) for the wire-format JSON Schemas.
 
