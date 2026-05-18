@@ -8,50 +8,35 @@ The SDK is a **strict replica** of the gateway's internal stores: same shapes, s
 
 ## Install
 
-This SDK is distributed via [JitPack](https://jitpack.io). Add the JitPack repository and the dependency to your build.
+Published on **Maven Central**. Requires Java 17+.
 
 ### Gradle (Kotlin DSL)
 
 ```kotlin
-repositories {
-    maven { url = uri("https://jitpack.io") }
-}
-
 dependencies {
-    implementation("com.github.Lisandru-2b:realtimeodds-java:v0.3.0")
+    implementation("xyz.realtimeodds:realtimeodds-java:0.3.0")
 }
 ```
 
 ### Gradle (Groovy)
 
 ```groovy
-repositories {
-    maven { url 'https://jitpack.io' }
-}
-
 dependencies {
-    implementation 'com.github.Lisandru-2b:realtimeodds-java:v0.3.0'
+    implementation 'xyz.realtimeodds:realtimeodds-java:0.3.0'
 }
 ```
 
 ### Maven
 
 ```xml
-<repositories>
-    <repository>
-        <id>jitpack.io</id>
-        <url>https://jitpack.io</url>
-    </repository>
-</repositories>
-
 <dependency>
-    <groupId>com.github.Lisandru-2b</groupId>
+    <groupId>xyz.realtimeodds</groupId>
     <artifactId>realtimeodds-java</artifactId>
-    <version>v0.3.0</version>
+    <version>0.3.0</version>
 </dependency>
 ```
 
-Requires Java 17+.
+No custom repository to declare — `mavenCentral()` is the default in modern Gradle, and Maven resolves it out of the box. Artifacts are GPG-signed (key id `65A344DC`) and ship with sources + javadoc jars.
 
 ## Quickstart
 
