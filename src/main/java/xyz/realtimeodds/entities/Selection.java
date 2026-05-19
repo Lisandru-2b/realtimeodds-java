@@ -2,7 +2,7 @@ package xyz.realtimeodds.entities;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import xyz.realtimeodds.internal.IdHelper;
+import xyz.realtimeodds.IdHelper;
 
 /**
  * A bettable outcome within a {@link Market}.

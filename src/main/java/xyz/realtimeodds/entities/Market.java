@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import xyz.realtimeodds.internal.IdHelper;
+import xyz.realtimeodds.IdHelper;
 
 /**
  * A betting market within a {@link SportEvent}. Discriminated union over

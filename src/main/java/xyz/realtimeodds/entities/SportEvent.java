@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import xyz.realtimeodds.internal.IdHelper;
+import xyz.realtimeodds.IdHelper;
 
 /**
  * A sport event (match) reported by a bookmaker. Discriminated union over
