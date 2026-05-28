@@ -8,8 +8,16 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * not a wire field — exposed as a computed property on the {@link SportEvent} class.
  */
 public enum Sport {
+    AMERICAN_FOOTBALL("american_football"),
+    BASEBALL("baseball"),
     BASKETBALL("basketball"),
+    BOXING("boxing"),
+    CRICKET("cricket"),
     FOOTBALL("football"),
+    HANDBALL("handball"),
+    HOCKEY("hockey"),
+    MMA("mma"),
+    RUGBY_LEAGUE("rugby_league"),
     TENNIS("tennis");
 
     private final String value;

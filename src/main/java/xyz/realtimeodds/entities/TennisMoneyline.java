@@ -12,10 +12,20 @@ public record TennisMoneyline(
         boolean isSynthetic,
         Map<String, Selection> selections,
         String competitor1,
-        String competitor2) implements Market {
+        String competitor2,
+        String period) implements Market {
 
     public TennisMoneyline {
         selections = Map.copyOf(selections);
+    }
+
+    public TennisMoneyline(
+            String id,
+            boolean isSynthetic,
+            Map<String, Selection> selections,
+            String competitor1,
+            String competitor2) {
+        this(id, isSynthetic, selections, competitor1, competitor2, "full_match");
     }
 
     @JsonCreator
@@ -24,14 +34,15 @@ public record TennisMoneyline(
             @JsonProperty("isSynthetic") boolean isSynthetic,
             @JsonProperty("selections") List<Selection> selections,
             @JsonProperty("competitor1") String competitor1,
-            @JsonProperty("competitor2") String competitor2) {
+            @JsonProperty("competitor2") String competitor2,
+            @JsonProperty("period") String period) {
         Map<String, Selection> map = new LinkedHashMap<>();
         if (selections != null) {
             for (Selection s : selections) {
                 map.put(s.id(), s);
             }
         }
-        return new TennisMoneyline(id, isSynthetic, map, competitor1, competitor2);
+        return new TennisMoneyline(id, isSynthetic, map, competitor1, competitor2, period == null ? "full_match" : period);
     }
 
     @Override
@@ -52,14 +63,14 @@ public record TennisMoneyline(
     @Override
     public String getSelectionName(SelectionResult result) {
         return switch (result) {
-            case COMPETITOR1 -> competitor1 + " vainqueur";
-            case COMPETITOR2 -> competitor2 + " vainqueur";
+            case COMPETITOR1 -> competitor1 + " vainqueur" + PeriodLabels.label(period);
+            case COMPETITOR2 -> competitor2 + " vainqueur" + PeriodLabels.label(period);
             default -> throw new IllegalArgumentException("Invalid selection result: " + result);
         };
     }
 
     @Override
     public Market withSelections(Map<String, Selection> newSelections) {
-        return new TennisMoneyline(id, isSynthetic, newSelections, competitor1, competitor2);
+        return new TennisMoneyline(id, isSynthetic, newSelections, competitor1, competitor2, period);
     }
 }

@@ -12,10 +12,20 @@ public record FootballMoneyline(
         boolean isSynthetic,
         Map<String, Selection> selections,
         String homeTeam,
-        String awayTeam) implements Market {
+        String awayTeam,
+        String period) implements Market {
 
     public FootballMoneyline {
         selections = Map.copyOf(selections);
+    }
+
+    public FootballMoneyline(
+            String id,
+            boolean isSynthetic,
+            Map<String, Selection> selections,
+            String homeTeam,
+            String awayTeam) {
+        this(id, isSynthetic, selections, homeTeam, awayTeam, "full_match");
     }
 
     @JsonCreator
@@ -24,14 +34,15 @@ public record FootballMoneyline(
             @JsonProperty("isSynthetic") boolean isSynthetic,
             @JsonProperty("selections") List<Selection> selections,
             @JsonProperty("homeTeam") String homeTeam,
-            @JsonProperty("awayTeam") String awayTeam) {
+            @JsonProperty("awayTeam") String awayTeam,
+            @JsonProperty("period") String period) {
         Map<String, Selection> map = new LinkedHashMap<>();
         if (selections != null) {
             for (Selection s : selections) {
                 map.put(s.id(), s);
             }
         }
-        return new FootballMoneyline(id, isSynthetic, map, homeTeam, awayTeam);
+        return new FootballMoneyline(id, isSynthetic, map, homeTeam, awayTeam, period == null ? "full_match" : period);
     }
 
     @Override
@@ -52,8 +63,8 @@ public record FootballMoneyline(
     @Override
     public String getSelectionName(SelectionResult result) {
         return switch (result) {
-            case HOME -> homeTeam + " vainqueur";
-            case AWAY -> awayTeam + " vainqueur";
+            case HOME -> homeTeam + " vainqueur" + PeriodLabels.label(period);
+            case AWAY -> awayTeam + " vainqueur" + PeriodLabels.label(period);
             case DRAW -> "Match nul";
             default -> throw new IllegalArgumentException("Invalid selection result: " + result);
         };
@@ -61,6 +72,6 @@ public record FootballMoneyline(
 
     @Override
     public Market withSelections(Map<String, Selection> newSelections) {
-        return new FootballMoneyline(id, isSynthetic, newSelections, homeTeam, awayTeam);
+        return new FootballMoneyline(id, isSynthetic, newSelections, homeTeam, awayTeam, period);
     }
 }

@@ -10,19 +10,39 @@ import xyz.realtimeodds.IdHelper;
 
 /**
  * A sport event (match) reported by a bookmaker. Discriminated union over
- * {@link #kind()}. Three variants in v1.
+ * {@link #kind()}.
  *
  * <p>{@code bookmaker} and {@code sport} are NOT wire fields — they are
  * computed properties derived from {@code id} and {@code kind}.
  */
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "kind")
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "kind", defaultImpl = UnknownSportEvent.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonSubTypes({
+        @JsonSubTypes.Type(value = AmericanFootballMatch.class, name = "se:american_football_match"),
+        @JsonSubTypes.Type(value = BaseballMatch.class, name = "se:baseball_match"),
         @JsonSubTypes.Type(value = BasketballMatch.class, name = "se:basketball_match"),
+        @JsonSubTypes.Type(value = BoxingFight.class, name = "se:boxing_fight"),
+        @JsonSubTypes.Type(value = CricketMatch.class, name = "se:cricket_match"),
         @JsonSubTypes.Type(value = FootballMatch.class, name = "se:football_match"),
+        @JsonSubTypes.Type(value = HandballMatch.class, name = "se:handball_match"),
+        @JsonSubTypes.Type(value = HockeyMatch.class, name = "se:hockey_match"),
+        @JsonSubTypes.Type(value = MmaFight.class, name = "se:mma_fight"),
+        @JsonSubTypes.Type(value = RugbyLeagueMatch.class, name = "se:rugby_league_match"),
         @JsonSubTypes.Type(value = TennisMatch.class, name = "se:tennis_match"),
 })
-public sealed interface SportEvent permits BasketballMatch, FootballMatch, TennisMatch {
+public sealed interface SportEvent permits
+        AmericanFootballMatch,
+        BaseballMatch,
+        BasketballMatch,
+        BoxingFight,
+        CricketMatch,
+        FootballMatch,
+        HandballMatch,
+        HockeyMatch,
+        MmaFight,
+        RugbyLeagueMatch,
+        TennisMatch,
+        UnknownSportEvent {
 
     String id();
 
