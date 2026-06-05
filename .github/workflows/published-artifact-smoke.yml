@@ -1,0 +1,104 @@
+name: Published artifact smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      sdk_version:
+        description: Maven Central SDK version to test
+        required: true
+        default: '0.3.2'
+  schedule:
+    - cron: '17 7 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: prod
+            url: wss://api.realtimeodds.xyz/ws
+            min_events: '1'
+          - name: staging
+            url: wss://api.staging.realtimeodds.xyz/ws
+            min_events: '0'
+    env:
+      SDK_VERSION: ${{ inputs.sdk_version || '0.3.2' }}
+      REALTIMEODDS_URL: ${{ matrix.url }}
+      REALTIMEODDS_MIN_EVENTS: ${{ matrix.min_events }}
+      REALTIMEODDS_API_KEY: ${{ matrix.name == 'prod' && secrets.REALTIMEODDS_PROD_API_KEY || secrets.REALTIMEODDS_STAGING_API_KEY }}
+    steps:
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+
+      - name: Create probe project
+        run: |
+          set -euo pipefail
+          test -n "$REALTIMEODDS_API_KEY"
+          mkdir -p "$RUNNER_TEMP/sdk-probe/src/main/java"
+          cat > "$RUNNER_TEMP/sdk-probe/settings.gradle.kts" <<'EOF'
+          rootProject.name = "sdk-probe"
+          EOF
+          cat > "$RUNNER_TEMP/sdk-probe/build.gradle.kts" <<EOF
+          plugins { application }
+          repositories { mavenCentral() }
+          java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }
+          dependencies { implementation("xyz.realtimeodds:realtimeodds-java:$SDK_VERSION") }
+          application { mainClass.set("SdkProbe") }
+          EOF
+          cat > "$RUNNER_TEMP/sdk-probe/src/main/java/SdkProbe.java" <<'EOF'
+          import java.util.concurrent.TimeUnit;
+          import xyz.realtimeodds.Client;
+          import xyz.realtimeodds.RealtimeOddsClient;
+          import xyz.realtimeodds.entities.Market;
+          import xyz.realtimeodds.entities.SportEvent;
+          import xyz.realtimeodds.entities.UnknownMarket;
+          import xyz.realtimeodds.entities.UnknownSportEvent;
+
+          public class SdkProbe {
+              public static void main(String[] args) throws Exception {
+                  String url = System.getenv("REALTIMEODDS_URL");
+                  String apiKey = System.getenv("REALTIMEODDS_API_KEY");
+                  int minEvents = Integer.parseInt(System.getenv().getOrDefault("REALTIMEODDS_MIN_EVENTS", "0"));
+                  Client client = RealtimeOddsClient.builder().url(url).apiKey(apiKey).build();
+                  client.onError(e -> {
+                      System.err.println("sdk-error fatal=" + e.fatal() + " message=" + e.message());
+                      if (e.fatal()) System.exit(3);
+                  });
+                  client.connect().orTimeout(15, TimeUnit.SECONDS).join();
+                  Thread.sleep(8000);
+                  int events = 0;
+                  int unknownEvents = 0;
+                  int markets = 0;
+                  int unknownMarkets = 0;
+                  for (SportEvent event : client.snapshot()) {
+                      events++;
+                      if (event instanceof UnknownSportEvent) unknownEvents++;
+                      for (Market market : event.markets().values()) {
+                          markets++;
+                          if (market instanceof UnknownMarket) unknownMarkets++;
+                      }
+                  }
+                  client.disconnect().join();
+                  System.out.printf("events=%d markets=%d unknownEvents=%d unknownMarkets=%d%n",
+                          events, markets, unknownEvents, unknownMarkets);
+                  if (events < minEvents || unknownEvents > 0 || unknownMarkets > 0) System.exit(1);
+              }
+          }
+          EOF
+
+      - name: Run smoke
+        working-directory: ${{ runner.temp }}/sdk-probe
+        run: gradle run --quiet

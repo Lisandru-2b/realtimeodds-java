@@ -4,7 +4,7 @@ Real-time betting odds SDK for Java — multi-bookmaker, sport-discriminated, as
 
 The SDK is a **strict replica** of the gateway's internal stores: same shapes, same fields, same getters and read-side methods. Discriminated unions implemented as Java 17 `sealed interface` + `record`, so consumer code can `switch` exhaustively with full type narrowing.
 
-> Status: 0.3.0 — alpha. Stable through the `0.x` line.
+> Status: 0.3.2 — alpha. Stable through the `0.x` line.
 
 ## Install
 
@@ -14,7 +14,7 @@ Published on **Maven Central**. Requires Java 17+.
 
 ```kotlin
 dependencies {
-    implementation("xyz.realtimeodds:realtimeodds-java:0.3.0")
+    implementation("xyz.realtimeodds:realtimeodds-java:0.3.2")
 }
 ```
 
@@ -22,7 +22,7 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'xyz.realtimeodds:realtimeodds-java:0.3.0'
+    implementation 'xyz.realtimeodds:realtimeodds-java:0.3.2'
 }
 ```
 
@@ -32,7 +32,7 @@ dependencies {
 <dependency>
     <groupId>xyz.realtimeodds</groupId>
     <artifactId>realtimeodds-java</artifactId>
-    <version>0.3.0</version>
+    <version>0.3.2</version>
 </dependency>
 ```
 
@@ -47,7 +47,7 @@ import xyz.realtimeodds.entities.BasketballMatch;
 public class Quickstart {
     public static void main(String[] args) throws Exception {
         var client = RealtimeOddsClient.builder()
-            .url("wss://api.realtimeodds.xyz")
+            .url("wss://api.realtimeodds.xyz/ws")
             .apiKey(System.getenv("REALTIMEODDS_API_KEY"))
             .build();
 
@@ -119,8 +119,8 @@ Close codes 4001/4002/4003 are fatal auth codes; `fatal=true` errors stop the cl
 
 Frozen `record` types implementing `sealed interface` unions. Branch with `switch` or `instanceof` for exhaustive type narrowing.
 
-- **`SportEvent`** (`BasketballMatch | FootballMatch | TennisMatch`): `id`, `kind`, `bookmaker`, `sport`, `competition`, `sportRegion`, `startDate` (Java `OffsetDateTime`), `matchUrl`, `name`, `markets: Map`, plus `getMarket(id)`, `getSelection(id)`.
-- **`Market`** (6 variants discriminated by `kind`): `id`, `kind`, `selectionKind`, `isSynthetic`, `bookmaker`, `marketName`, `sportEventName`, `sport`, `category`, `isAvailable`, `isFullyAvailable`, `numberOfPossibleResults`, `selections: Map`, plus `getSelection(id)`, `getSelectionByResult(result)`, `getFairOdd(result)`, `calculateMargin()`, etc.
+- **`SportEvent`**: sport-specific match records, plus `UnknownSportEvent` fallback for forward compatibility.
+- **`Market`**: sport-specific market records, including tennis moneyline/handicap/total, plus `UnknownMarket` fallback for forward compatibility.
 - **`Selection`**: `id`, `kind`, `result`, `quote`, `orderBook`, `bookmaker`, `isAvailable`, `price()` (throws if unavailable).
 - **`Quote`**: `price`, `size`, `timestamp`, `impliedProbability()`.
 - **`OrderBook`**: `bids`, `asks`, `timestamp`, `bestBid()`, `bestAsk()`, `spread()`, `midPrice()`, `availableSizeUpTo(maxPrice)`.
@@ -132,10 +132,12 @@ Sport-specific fields (`homeTeam`/`awayTeam`/`competitor1`/`competitor2`/`period
 ```java
 client.onSportEventAdded(ev -> {
     var se = ev.sportEvent();
-    switch (se) {
-        case BasketballMatch b -> System.out.println(b.homeTeam() + " vs " + b.awayTeam());
-        case FootballMatch f -> System.out.println(f.homeTeam() + " vs " + f.awayTeam());
-        case TennisMatch t -> System.out.println(t.competitor1() + " vs " + t.competitor2());
+    if (se instanceof BasketballMatch b) {
+        System.out.println(b.homeTeam() + " vs " + b.awayTeam());
+    } else if (se instanceof FootballMatch f) {
+        System.out.println(f.homeTeam() + " vs " + f.awayTeam());
+    } else if (se instanceof TennisMatch t) {
+        System.out.println(t.competitor1() + " vs " + t.competitor2());
     }
     for (var market : se.markets().values()) {
         if (market instanceof BasketballHandicap h) {
@@ -181,7 +183,7 @@ client.onError(ev -> {
 
 ## Stability
 
-This is `0.3.0`. The shapes documented above are intended to remain stable through the `0.x` line.
+This is `0.3.2`. The shapes documented above are intended to remain stable through the `0.x` line.
 
 See [`realtimeodds-spec`](https://github.com/Lisandru-2b/realtimeodds-spec) for the wire-format JSON Schemas.
 
